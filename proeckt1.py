@@ -1,161 +1,116 @@
-# Характеристики
-class Character:
-    def __init__(self, name, hp, mp, armor, damage):
-        self.name = name
-        self.hp = hp
-        self.mp = mp
-        self.armor = armor
-        self.damage = damage
+# Константы
+MAP_SIZE = 10
+WALL = '#'
+EMPTY = '.'
+PLAYER = 'P'
+ENEMY = 'E'
+ITEM = 'I'
 
-    def attack(self, target):
-        # Новый расчет урона
-        damage = int(self.damage * (1 - target.armor / (target.armor + 100)))
-        damage = max(damage, 1)  # Убедимся, что урон не меньше 1
-        target.hp -= damage
-        print(f"{self.name} наносит {damage} урона {target.name}.")
-        print(f"{target.name} осталось здоровья: {target.hp}")
+# Функции для работы с персонажами
+def create_character(name, hp, mp, arm, dmg):
+    return {
+        'name': name,
+        'hp': hp,
+        'mp': mp,
+        'arm': arm,
+        'dmg': dmg
+    }
 
-    def is_alive(self):
-        return self.hp > 0
+def is_alive(character):
+    return character['hp'] > 0
 
-# Карта
-class Map:
-    def __init__(self, width, height):
-        self.width = width
-        self.height = height
-        self.grid = [['#'] * (width + 2)]
-        for _ in range(height):
-            self.grid.append(['#'] + ['.'] * width + ['#'])
-        self.grid.append(['#'] * (width + 2))
+def attack(attacker, defender):
+    damage = calculate_damage(attacker, defender)
+    defender['hp'] -= damage
+    print(f"{attacker['name']} нанес {damage} урона {defender['name']}. У {defender['name']} осталось {defender['hp']} HP.")
 
-    def is_walkable(self, x, y, enemies):
-        if 0 < x < self.width + 1 and 0 < y < self.height + 1 and self.grid[y][x] != '#':
-            for enemy in enemies:
-                if enemy.position == (x, y) and enemy.is_alive():
-                    return False
-            return True
-        return False
-
-    def render(self, player, enemies):
-        for y in range(self.height + 2):
-            for x in range(self.width + 2):
-                if (x, y) == player.position:
-                    print('P', end=' ')
-                elif any(enemy.position == (x, y) for enemy in enemies if enemy.is_alive()):
-                    print('A', end=' ')
+# Функция для рендеринга карты
+def render_map(player_pos, enemy_pos, items):
+    for y in range(MAP_SIZE + 2):  # +2 для границ
+        for x in range(MAP_SIZE + 2):  # +2 для границ
+            if x == 0 or x == MAP_SIZE + 1 or y == 0 or y == MAP_SIZE + 1:
+                print(WALL, end=' ')  # Границы
+            else:
+                if (x - 1, y - 1) == player_pos:
+                    print(PLAYER, end=' ')
+                elif (x - 1, y - 1) == enemy_pos:
+                    print(ENEMY, end=' ')
+                elif (x - 1, y - 1) in items:
+                    print(ITEM, end=' ')
                 else:
-                    print(self.grid[y][x], end=' ')
-            print()
+                    print(EMPTY, end=' ')
+        print()
 
-# Игрок
-class Player(Character):
-    def __init__(self, name, hp, mp, armor, damage):
-        super().__init__(name, hp, mp, armor, damage)
-        self.position = (3, 3)
-        self.inventory = []
+# Функция для обработки движения
+def move_player(player_pos, direction, enemy_pos):
+    x, y = player_pos
+    if direction == 'w' and y > 0:  # вверх
+        y -= 1
+    elif direction == 's' and y < MAP_SIZE - 1:  # вниз
+        y += 1
+    elif direction == 'a' and x > 0:  # влево
+        x -= 1
+    elif direction == 'd' and x < MAP_SIZE - 1:  # вправо
+        x += 1
 
-    def move(self, dx, dy, game_map, enemies):
-        new_x = self.position[0] + dx
-        new_y = self.position[1] + dy
-        if game_map.is_walkable(new_x, new_y, enemies):
-            self.position = (new_x, new_y)
-        else:
-            print("Вы не можете пройти в этом направлении.")
+    # Проверка на столкновение с врагом
+    if (x, y) == enemy_pos:
+        return player_pos, True  # Возвращаем старую позицию и флаг столкновения
+    return (x, y), False
 
-    def pick_up(self, item):
-        self.inventory.append(item)
-        print(f"{self.name} подобрал {item}.")
+# Функция для расчета урона
+def calculate_damage(attacker, defender):
+    damage = attacker['dmg'] - defender['arm']
+    return max(damage, 0)
 
-# Враг
-class Enemy(Character):
-    def __init__(self, name, hp, mp, armor, damage, position):
-        super().__init__(name, hp, mp, armor, damage)
-        self.position = position
-
-    def move(self, game_map, player):
-        dx = 0
-        dy = 0
-        if player.position[0] < self.position[0]:
-            dx = -1
-        elif player.position[0] > self.position[0]:
-            dx = 1
-        if player.position[1] < self.position[1]:
-            dy = -1
-        elif player.position[1] > self.position[1]:
-            dy = 1
-
-        new_x = self.position[0] + dx
-        new_y = self.position[1] + dy
-
-        if game_map.is_walkable(new_x, new_y, []):
-            self.position = (new_x, new_y)
-
-# Игровой цикл
-def game_loop(player, enemies, game_map):
-    while True:
-        game_map.render(player, enemies)
-        print(f"HP: {player.hp} | MP: {player.mp} | Инвентарь: {', '.join(player.inventory)}")
-        print("Управление: W (вверх), A (влево), S (вниз), D (вправо), Q (выход)")
-
-        target = None
-        for enemy in enemies:
-            if enemy.position == player.position and enemy.is_alive():
-                target = enemy
-                break
-
-        # Проверка на возможность атаки
-        attack_available = False
-        for enemy in enemies:
-            if enemy.is_alive() and abs(player.position[0] - enemy.position[0]) <= 1 and abs(player.position[1] - enemy.position[1]) <= 1:
-                attack_available = True
-                break
-
-        if attack_available:
-            print("E (атака)")
-
-        move = input("Введите команду: ").strip().lower()
-
-        if move == 'w':
-            player.move(0, -1, game_map, enemies)
-        elif move == 's':
-            player.move(0, 1, game_map, enemies)
-        elif move == 'a':
-            player.move(-1, 0, game_map, enemies)
-        elif move == 'd':
-            player.move(1, 0, game_map, enemies)
-        elif move == 'q':
-            break
-        elif move == 'e' and target:
-            player.attack(target)
-            if not target.is_alive():
-                enemies.remove(target)  # Удаляем врага из списка
-                print(f"{target.name} повержен!")
-
-        # Проверка на урон от врагов
-        for enemy in enemies:
-            if enemy.position == player.position and enemy.is_alive():
-                enemy.attack(player)
-                if not player.is_alive():
-                    print("Вы проиграли!")
-                    return
-
-        if not player.is_alive():
-            print("Вы проиграли!")
-            return
-
-# Главная функция
+# Основная игра
 def main():
-    game_map = Map(10, 10)  # Создаем карту размером 10x10
-    player = Player("Игрок", 100, 50, 5, 20)  # Создаем игрока с характеристиками
-    enemies = [
-        Enemy("Враг 1", 30, 20, 3, 5, (2, 2)),  # Создаем первого врага
-        Enemy("Враг 2", 50, 20, 3, 5, (7, 7))   # Создаем второго врага
-    ]
+    player = create_character("Player", 100, 50, 5, 10)
+    enemy = create_character("Enemy", 50, 0, 2, 8)
+    player_pos = (1, 1)
+    enemy_pos = (8, 8)
+    items = {(3, 3): "Health Potion", (5, 5): "Mana Potion"}
+    inventory = []
 
-    game_loop(player, enemies, game_map)  # Запускаем игровой цикл
+    while is_alive(player) and is_alive(enemy):
+        render_map(player_pos, enemy_pos, items)
+        action = input("Введите действие (w/a/s/d для движения, 'e' для атаки, 'pick' для подбора предмета, 'q' для выхода): ")
+
+        if action in ['w', 'a', 's', 'd']:
+            new_pos, collision = move_player(player_pos, action, enemy_pos)
+            if not collision:
+                player_pos = new_pos
+            else:
+                print("Вы не можете пройти через врага!")
+        elif action == 'e':  # Атака
+            # Проверка, находится ли игрок рядом с врагом
+            if (abs(player_pos[0] - enemy_pos[0]) <= 1 and abs(player_pos[1] - enemy_pos[1]) <= 1):
+                attack(player, enemy)
+                if is_alive(enemy):
+                    attack(enemy, player)
+            else:
+                print("Враг слишком далеко!")
+        elif action == 'pick':
+            if player_pos in items:
+                item = items.pop(player_pos)
+                inventory.append(item)
+                print(f"Вы подобрали {item}.")
+            else:
+                print("Здесь нет предметов.")
+        elif action == 'q':  # Выход из игры
+            print("Вы вышли из игры.")
+            break
+        else:
+            print("Неверная команда. Пожалуйста, попробуйте снова.")
+
+            # Проверка на атаку врага
+        if is_alive(enemy) and player_pos == enemy_pos:
+            attack(enemy, player)
+
+    if is_alive(player):
+        print("Вы победили врага!")
+    else:
+        print("Вы погибли...")
 
 if __name__ == "__main__":
-    main()  # Запускаем главную функцию, если скрипт выполняется напрямую
-
-
-
+    main()
